@@ -98,6 +98,5 @@ WorkBuddy 字段桥接仍会推送（供后续扩展），固件暂不绘制。
 
 ## 后续可做
 
-- ⬜ Codex 重新登录后自动生效：`codex login --device-auth`（refresh token 已失效时）
 - ⬜ 抓包 WorkBuddy 账户余额接口 → 桥接脚本加一段 → 屏幕显示真实点数余额
 - ⬜ 低功耗：深睡 + RTC 定时唤醒，墨水屏掉电保持画面
