@@ -1,17 +1,18 @@
 # ESP32 墨水屏 · AI 额度显示器
 
-用墨水屏实时显示 AI 工具用量：**Kimi Code** 窗口额度（5 小时 / 7 天 / 加油包）
-+ **WorkBuddy** 会话上下文占用、累计算力消耗、会话数。
+用墨水屏实时显示多家 AI 工具用量：**Kimi**（5 小时 / 7 天窗口 + 会员月度总池）
++ **Codex**（5 小时 / 7 天订阅窗口）+ WorkBuddy 会话数据。
 
 **当前进度：✅ 串口版已上线。** PC 每 30 秒把真实数据从 COM6 推给墨水屏，无需 WiFi。
 
 ## 数据链路
 
 ```
-Kimi 官方用量接口 (api.kimi.com/coding/v1/usages, 官方接口, Bearer 鉴权)
-WorkBuddy (~/.workbuddy/workbuddy.db, 只读)
+Kimi 官方用量接口 (api.kimi.com/coding/v1/usages)
+Kimi 会员页接口 (www.kimi.com/apiv2/.../GetSubscriptionStats, 非官方)
+Codex 额度接口 (chatgpt.com/backend-api/wham/usage, 凭据 ~/.codex/auth.json)
    └─ PC: bridge/wb_serial_bridge.py  --USB串口 COM6-->  ESP32
-        └─ 屏幕: K5H/K7D/BOOST 进度条 + WB CONTEXT / CREDITS / 会话数
+        └─ 屏幕: K5H/K7D/TOTAL + C5H/C7D 五行用量
 ```
 
 启动串口桥接（PC 上；**烧录固件前要先关掉它**，否则占用 COM6）：
@@ -20,18 +21,20 @@ WorkBuddy (~/.workbuddy/workbuddy.db, 只读)
 C:/Users/Administrator/.workbuddy/binaries/python/envs/default/Scripts/python.exe -u E:/code/esp32-codex-quota/bridge/wb_serial_bridge.py
 ```
 
-串口协议：一行 ASCII，如 `WB {"ctx_pct":14.6,"credits":940.5,"sessions":9,"k5h":12.0,"k7d":3.5,"kmon":9.5}\n`。
+串口协议：一行 ASCII，如 `WB {"ctx_pct":14.6,"credits":940.5,"sessions":9,"k5h":12.0,"k7d":3.5,"kmon":9.5,"c5h":30.0,"c7d":12.0}\n`。
 
 - `k5h` / `k7d`：Kimi Code 滚动 5 小时 / 7 天窗口**已用** %（官方接口 `api.kimi.com/coding/v1/usages`）
-- `kmon`：会员**月度总用量已用** %（网页端接口 `GetSubscriptionStats` 的
+- `kmon`：Kimi 会员**月度总用量已用** %（网页端接口 `GetSubscriptionStats` 的
   `subscriptionBalance.amountUsedRatio`，非官方，接口变动可能失效；获取失败发 -1）
-- 凭据都读自 `E:/KimiData/daimon-share/daimon/config.json`：`kimiCode.apiKey` +
-  `kimiWeb.accessToken`（后者由 Kimi 桌面端自动续期，每次现读，撞 401 会重试一次）
+- `c5h` / `c7d`：Codex 订阅 primary / secondary 窗口**已用** %
+  （`wham/usage` 的 `rate_limit.primary_window/secondary_window.used_percent`；
+  凭据失效或获取失败发 -1，屏幕显示 `--`）
+- Kimi 凭据读自 `E:/KimiData/daimon-share/daimon/config.json`（`kimiCode.apiKey` +
+  `kimiWeb.accessToken`，后者由 Kimi 桌面端自动续期，每次现读，撞 401 会重试一次）
+- Codex 凭据读自 `~/.codex/auth.json`；access token 过期时脚本会自动用 refresh_token
+  刷新并**把旋转后的新 token 写回 auth.json**（写回格式与官方 CLI 一致，client_id 用
+  官方 CLI 源码中的公开常量），refresh token 本身失效则需重新登录 Codex
 - 网络故障时沿用上次数据，从未成功则显示 `--`；仅数据变化时才发送，避免无谓刷屏。
-
-**说明**：WorkBuddy 账户总点数余额在服务端，本地无缓存、无公开 API。
-目前显示的是本地 `session_usage` 表的真实数据。若要显示账户余额，
-需抓包 WorkBuddy 客户端查余额的接口，把逻辑加进桥接脚本即可。
 
 ## 项目结构
 
@@ -73,24 +76,29 @@ cd E:\code\esp32-codex-quota\tools
 ## 屏幕界面
 
 ```
-KIMI CODE
+AI QUOTA
 ────────────────────────
-5H                        100%
+K5H                       100%
 [████████████████████████]
-7D                        100%
+K7D                       100%
 [████████████████████████]
-TOTAL                      91%
+TOTAL                      90%
 [███████████████████░░░░░]
+C5H                        --
+[░░░░░░░░░░░░░░░░░░░░░░░░]
+C7D                        --
+[░░░░░░░░░░░░░░░░░░░░░░░░]
 ────────────────────────
-TOTAL = monthly pool
+K=Kimi  C=Codex
+TOTAL = monthly
 ```
 
 进度条与数字都显示**剩余** %（= 100 − 已用 %），数字右对齐与标签/进度条不重叠。
-屏幕只显示 Kimi 额度，WorkBuddy 字段桥接仍会推送（供后续扩展），固件暂不绘制。
+K 开头是 Kimi，C 开头是 Codex，TOTAL 是 Kimi 会员月度总池；凭据失效的行显示 `--`。
+WorkBuddy 字段桥接仍会推送（供后续扩展），固件暂不绘制。
 
 ## 后续可做
 
+- ⬜ Codex 重新登录后自动生效：`codex login --device-auth`（refresh token 已失效时）
 - ⬜ 抓包 WorkBuddy 账户余额接口 → 桥接脚本加一段 → 屏幕显示真实点数余额
-- ⬜ Codex 额度（接口已确认：`GET https://chatgpt.com/backend-api/wham/usage`，
-  凭据在 `~/.codex/auth.json`，token 过期需用 refresh_token 刷新，ESP32 直接刷会弄坏 Codex CLI 登录，仍走 PC 桥接）
 - ⬜ 低功耗：深睡 + RTC 定时唤醒，墨水屏掉电保持画面

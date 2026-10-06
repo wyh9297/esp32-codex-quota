@@ -6,7 +6,7 @@
  *  数据链路:
  *    PC: bridge/wb_serial_bridge.py
  *        读 ~/.workbuddy/workbuddy.db + Kimi 用量接口, 每 30s 从 COM6 发一行:
- *        WB {"ctx_pct":13.7,"credits":928.8,"sessions":9,"k5h":0,"k7d":0,"kmon":9.5}
+ *        WB {"ctx_pct":13.7,"credits":928.8,"sessions":9,"k5h":0,"k7d":0,"kmon":9.5,"c5h":12.0,"c7d":30.0}
  *    ESP32: 读串口 -> 解析 -> 墨水屏显示
  *
  *  注意: 烧录固件前先关掉 PC 上的串口脚本 (占用 COM6)。
@@ -37,11 +37,13 @@ struct WbData {
   int   sessions;    // 会话数
   float k5h;         // Kimi Code 5 小时窗口已用 %
   float k7d;         // Kimi Code 7 天窗口已用 %
-  float kmon;        // 会员月度总用量已用 %
+  float kmon;        // Kimi 会员月度总用量已用 %
+  float c5h;         // Codex primary 窗口已用 %
+  float c7d;         // Codex secondary 窗口已用 %
   bool  valid;
 };
 
-static WbData lastData = {0, 0, 0, -1, -1, -1, false};
+static WbData lastData = {0, 0, 0, -1, -1, -1, -1, -1, false};
 static String rxLine = "";
 
 // ---------- 极简 JSON 数值提取 ----------
@@ -62,6 +64,8 @@ void parseLine(String line) {
   float k5h     = jsonNum(line, "\"k5h\"");
   float k7d     = jsonNum(line, "\"k7d\"");
   float kmon    = jsonNum(line, "\"kmon\"");
+  float c5h     = jsonNum(line, "\"c5h\"");
+  float c7d     = jsonNum(line, "\"c7d\"");
   bool  changed = false;
   if (pct >= 0) {
     lastData.ctx_pct  = pct;
@@ -72,6 +76,8 @@ void parseLine(String line) {
   if (k5h >= 0)  { lastData.k5h = k5h;   changed = true; }
   if (k7d >= 0)  { lastData.k7d = k7d;   changed = true; }
   if (kmon >= 0) { lastData.kmon = kmon; changed = true; }
+  if (c5h >= 0)  { lastData.c5h = c5h;   changed = true; }
+  if (c7d >= 0)  { lastData.c7d = c7d;   changed = true; }
   if (changed) {
     lastData.valid = true;
     drawAll();                                    // 收到新数据立即刷屏
@@ -96,9 +102,9 @@ void drawAll() {
 
     // 标题
     display.setFont(&FreeMonoBold12pt7b);
-    display.setCursor(2, 18);
-    display.print("KIMI CODE");
-    display.drawFastHLine(0, 24, w, GxEPD_BLACK);
+    display.setCursor(2, 16);
+    display.print("AI QUOTA");
+    display.drawFastHLine(0, 21, w, GxEPD_BLACK);
 
     if (!lastData.valid) {
       display.setFont(&FreeMonoBold9pt7b);
@@ -107,33 +113,37 @@ void drawAll() {
       display.setCursor(2, 80);
       display.print("run wb_serial_bridge");
     } else {
-      // --- 三行用量: 标签 + 右对齐剩余 %, 下方通栏大进度条 ---
+      // --- 五行用量: 标签 + 右对齐剩余 %, 下方通栏进度条 ---
       // (数值均为"已用 %", 进度条与数字显示剩余 = 100-已用)
       display.setFont(&FreeMonoBold9pt7b);
-      struct { const char* name; float used; int ty; int by; } rows[3] = {
-        {"5H",    lastData.k5h,    42,  48},
-        {"7D",    lastData.k7d,    86,  92},
-        {"TOTAL", lastData.kmon,   130, 136},
+      struct { const char* name; float used; int ty; int by; } rows[5] = {
+        {"K5H",   lastData.k5h,   34, 38},
+        {"K7D",   lastData.k7d,   60, 64},
+        {"TOTAL", lastData.kmon,  86, 90},
+        {"C5H",   lastData.c5h,  112, 116},
+        {"C7D",   lastData.c7d,  138, 142},
       };
-      for (int i = 0; i < 3; i++) {
+      for (int i = 0; i < 5; i++) {
         display.setCursor(2, rows[i].ty);
         display.print(rows[i].name);
         if (rows[i].used < 0) {
-          display.setCursor(176, rows[i].ty);      // "--"
+          display.setCursor(180, rows[i].ty);      // "--"
           display.print("--");
         } else {
           char buf[8];
           snprintf(buf, sizeof(buf), "%d%%", 100 - (int)(rows[i].used + 0.5));
           display.setCursor(198 - (int)strlen(buf) * 11, rows[i].ty);
           display.print(buf);
-          drawBar(2, rows[i].by, w - 4, 18,
+          drawBar(2, rows[i].by, w - 4, 14,
                   100 - (int)(rows[i].used + 0.5));
         }
       }
 
-      display.drawFastHLine(0, 170, w, GxEPD_BLACK);
+      display.drawFastHLine(0, 164, w, GxEPD_BLACK);
       display.setFont(&FreeMono9pt7b);          // 细体, 防超宽换行
-      display.setCursor(2, 188);
+      display.setCursor(2, 182);
+      display.print("K=Kimi  C=Codex");
+      display.setCursor(2, 196);
       display.print("TOTAL = monthly");
     }
   } while (display.nextPage());

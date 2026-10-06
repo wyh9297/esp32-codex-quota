@@ -6,9 +6,10 @@ WorkBuddy 额度 -> ESP32 串口桥接
 每 30 秒通过 USB 串口 (COM6) 把一行 JSON 推给墨水屏。
 
 协议: 一行 ASCII, 以 "WB " 开头, JSON 结尾 + \\n
-    WB {"ctx_pct":13.7,"credits":928.8,"sessions":9,"k5h":0.0,"k7d":0.0,"kmon":9.2}
+    WB {"ctx_pct":13.7,"credits":928.8,"sessions":9,"k5h":0.0,"k7d":0.0,"kmon":9.2,"c5h":12.5,"c7d":30.0}
     k5h/k7d  = Kimi Code 滚动 5 小时 / 7 天窗口已用 %
-    kmon     = 会员月度总用量已用 % (网页端接口, 获取失败时为 -1)
+    kmon     = Kimi 会员月度总用量已用 % (网页端接口, 获取失败时为 -1)
+    c5h/c7d  = Codex 订阅 primary/secondary 窗口已用 % (凭据失效时为 -1)
 
 启动: wb_serial_bridge.exe 环境
     C:/Users/Administrator/.workbuddy/binaries/python/envs/default/Scripts/python.exe wb_serial_bridge.py
@@ -19,7 +20,7 @@ import os
 import sqlite3
 import time
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 
 import serial
 
@@ -128,23 +129,93 @@ def read_kimi():
     return {"k5h": k5h, "k7d": k7d, "kmon": kmon}
 
 
+# ---------- Codex (chatgpt.com 订阅额度) ----------
+CODEX_AUTH = r"C:/Users/Administrator/.codex/auth.json"
+CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
+CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token"
+CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"   # 与官方 Codex CLI 相同 (其源码公开常量)
+
+
+def codex_usage(token):
+    req = urllib.request.Request(
+        CODEX_USAGE_URL,
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())
+
+
+def codex_refresh(rt):
+    body = json.dumps({
+        "grant_type": "refresh_token",
+        "client_id": CODEX_CLIENT_ID,
+        "refresh_token": rt,
+    }).encode()
+    req = urllib.request.Request(
+        CODEX_TOKEN_URL, data=body, method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read())
+
+
+def read_codex():
+    """Codex 订阅额度 (5h/7d 窗口已用 %)。凭据失效返回 None, 屏幕显示 --。"""
+    try:
+        d = json.load(open(CODEX_AUTH, encoding="utf-8"))
+    except Exception:
+        return None
+    toks = d.get("tokens") or {}
+    if not toks.get("access_token"):
+        return None
+    try:
+        u = codex_usage(toks["access_token"])
+    except urllib.error.HTTPError as e:
+        if e.code != 401 or not toks.get("refresh_token"):
+            return None
+        try:  # access 过期 -> refresh, 旋转后的新 token 写回 auth.json
+            new = codex_refresh(toks["refresh_token"])
+            toks["access_token"] = new["access_token"]
+            if new.get("refresh_token"):
+                toks["refresh_token"] = new["refresh_token"]
+            if new.get("id_token"):
+                toks["id_token"] = new["id_token"]
+            d["last_refresh"] = datetime.now(timezone.utc).isoformat()
+            json.dump(d, open(CODEX_AUTH, "w", encoding="utf-8"),
+                      indent=2, ensure_ascii=False)
+            u = codex_usage(toks["access_token"])
+        except Exception as ex:
+            print(f"[warn] Codex token 刷新失败 (需重新登录 Codex): {ex}")
+            return None
+    except Exception:
+        return None
+    try:
+        rl = u.get("rate_limit", {})
+        c5h = round(rl.get("primary_window", {}).get("used_percent", 0), 1)
+        c7d = round(rl.get("secondary_window", {}).get("used_percent", 0), 1)
+        return {"c5h": c5h, "c7d": c7d}
+    except Exception as e:
+        print(f"[warn] Codex 额度解析失败: {e}")
+        return None
+
+
 def main():
     ser = serial.Serial(PORT, BAUD, timeout=1)
     print(f"串口 {PORT} 已打开, 每 {INTERVAL}s 推送一次, Ctrl+C 退出")
     last_payload = None
     kimi_cache = {}
+    codex_cache = {}
     while True:
         data = read_usage()
         if data:
             kimi = read_kimi()
             if kimi:
                 kimi_cache = kimi
-            elif kimi_cache:
-                data.update(kimi_cache)          # 网络故障时沿用上次数据
-            else:
-                data.update({"k5h": -1, "k7d": -1, "kmon": -1})  # 从未成功过
-            if kimi:
-                data.update(kimi)
+            data.update(kimi_cache or {"k5h": -1, "k7d": -1, "kmon": -1})
+            codex = read_codex()
+            if codex:
+                codex_cache = codex
+            data.update(codex_cache or {"c5h": -1, "c7d": -1})
             line = "WB " + json.dumps(data, separators=(",", ":"))
             if line != last_payload:                 # 数据有变化才发, 减少无谓刷屏
                 ser.write((line + "\n").encode("ascii"))
