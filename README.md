@@ -26,9 +26,9 @@ C:/Users/Administrator/.workbuddy/binaries/python/envs/default/Scripts/python.ex
 - `k5h` / `k7d`：Kimi Code 滚动 5 小时 / 7 天窗口**已用** %（官方接口 `api.kimi.com/coding/v1/usages`）
 - `kmon`：Kimi 会员**月度总用量已用** %（网页端接口 `GetSubscriptionStats` 的
   `subscriptionBalance.amountUsedRatio`，非官方，接口变动可能失效；获取失败发 -1）
-- `c5h` / `c7d`：Codex 订阅 primary / secondary 窗口**已用** %
-  （`wham/usage` 的 `rate_limit.primary_window/secondary_window.used_percent`；
-  凭据失效或获取失败发 -1，屏幕显示 `--`）
+- `c5h` / `c7d`：Codex 订阅窗口**已用** %（`wham/usage` 的 `rate_limit` 窗口
+  按时长自动归桶：短窗 <24h → c5h，长窗 ≥24h → c7d；prolite 等单窗套餐另一行发 -1，
+  屏幕显示 `--`；凭据失效同样发 -1）
 - Kimi 凭据读自 `E:/KimiData/daimon-share/daimon/config.json`（`kimiCode.apiKey` +
   `kimiWeb.accessToken`，后者由 Kimi 桌面端自动续期，每次现读，撞 401 会重试一次）
 - Codex 凭据读自 `~/.codex/auth.json`；access token 过期时脚本会自动用 refresh_token
