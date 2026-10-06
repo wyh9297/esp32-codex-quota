@@ -160,7 +160,7 @@ def codex_refresh(rt):
 
 
 def read_codex():
-    """Codex 订阅额度 (5h/7d 窗口已用 %)。凭据失效返回 None, 屏幕显示 --。"""
+    """Codex 订阅窗口已用 %。短窗(<24h)->c5h, 长窗(>=24h)->c7d; 凭据失效返回 None。"""
     try:
         d = json.load(open(CODEX_AUTH, encoding="utf-8"))
     except Exception:
@@ -190,10 +190,17 @@ def read_codex():
     except Exception:
         return None
     try:
-        rl = u.get("rate_limit", {})
-        c5h = round(rl.get("primary_window", {}).get("used_percent", 0), 1)
-        c7d = round(rl.get("secondary_window", {}).get("used_percent", 0), 1)
-        return {"c5h": c5h, "c7d": c7d}
+        res = {"c5h": -1, "c7d": -1}
+        for w in (u.get("rate_limit", {}) or {}).get("primary_window"), \
+                 (u.get("rate_limit", {}) or {}).get("secondary_window"):
+            if not w:
+                continue
+            hours = (w.get("limit_window_seconds") or 0) / 3600
+            key = "c7d" if hours >= 24 else "c5h"
+            res[key] = round(w.get("used_percent", 0), 1)
+        if res == {"c5h": -1, "c7d": -1}:
+            return None
+        return res
     except Exception as e:
         print(f"[warn] Codex 额度解析失败: {e}")
         return None
