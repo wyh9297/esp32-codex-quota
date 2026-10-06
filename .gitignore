@@ -1,0 +1,27 @@
+# 编译产物
+build/
+*.bin
+*.elf
+*.map
+*.o
+*.d
+*.a
+*.hex
+
+# 工具二进制与压缩包
+tools/arduino-cli.exe
+tools/arduino-cli.zip
+
+# 运行日志
+*.log
+tools/bridge.err
+
+# 临时研究文件
+tools/kqc_*
+
+# Python
+__pycache__/
+*.pyc
+
+# 根目录临时文件
+/kqc.*
