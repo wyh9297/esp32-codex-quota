@@ -114,14 +114,15 @@ void drawAll() {
       display.print("run wb_serial_bridge");
     } else {
       // --- 五行用量: 标签 + 右对齐剩余 %, 下方通栏进度条 ---
-      // (数值均为"已用 %", 进度条与数字显示剩余 = 100-已用; 行距均匀, 留白透气)
+      // (数值均为"已用 %", 进度条与数字显示剩余 = 100-已用)
+      // 几何: 粗体9pt字形顶在基线上 12px, 行距32 - 字高12 - 条高12 = 8px 间隙, 互不侵犯
       display.setFont(&FreeMonoBold9pt7b);
       struct { const char* name; float used; int ty; int by; } rows[5] = {
-        {"K5H",  lastData.k5h,  38, 43},
-        {"K7D",  lastData.k7d,  66, 71},
-        {"KMON", lastData.kmon, 94, 99},
-        {"C5H",  lastData.c5h, 122, 127},
-        {"C7D",  lastData.c7d,  150, 155},
+        {"K5H",  lastData.k5h,  32, 36},
+        {"K7D",  lastData.k7d,  64, 68},
+        {"KMON", lastData.kmon, 96, 100},
+        {"C5H",  lastData.c5h,  128, 132},
+        {"C7D",  lastData.c7d,  160, 164},
       };
       for (int i = 0; i < 5; i++) {
         display.setCursor(2, rows[i].ty);
@@ -134,15 +135,10 @@ void drawAll() {
           snprintf(buf, sizeof(buf), "%d%%", 100 - (int)(rows[i].used + 0.5));
           display.setCursor(198 - (int)strlen(buf) * 11, rows[i].ty);
           display.print(buf);
-          drawBar(2, rows[i].by, w - 4, 16,
+          drawBar(2, rows[i].by, w - 4, 12,
                   100 - (int)(rows[i].used + 0.5));
         }
       }
-
-      display.drawFastHLine(0, 180, w, GxEPD_BLACK);
-      display.setFont(&FreeMono9pt7b);          // 细体, 防超宽换行
-      display.setCursor(2, 196);
-      display.print("K=Kimi  C=Codex");
     }
   } while (display.nextPage());
 }
