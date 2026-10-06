@@ -6,7 +6,7 @@
  *  数据链路:
  *    PC: bridge/wb_serial_bridge.py
  *        读 ~/.workbuddy/workbuddy.db + Kimi 用量接口, 每 30s 从 COM6 发一行:
- *        WB {"ctx_pct":13.7,"credits":928.8,"sessions":9,"k5h":0,"k7d":0,"kboost":59.8}
+ *        WB {"ctx_pct":13.7,"credits":928.8,"sessions":9,"k5h":0,"k7d":0,"kmon":9.5}
  *    ESP32: 读串口 -> 解析 -> 墨水屏显示
  *
  *  注意: 烧录固件前先关掉 PC 上的串口脚本 (占用 COM6)。
@@ -14,9 +14,9 @@
  */
 
 #include <GxEPD2_BW.h>
+#include <Fonts/FreeMono9pt7b.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeMonoBold12pt7b.h>
-#include <Fonts/FreeMonoBold18pt7b.h>
 
 // ---------- 板载墨水屏引脚 (焊死在板上, 不可改) ----------
 #define EPD_CS    11
@@ -132,8 +132,9 @@ void drawAll() {
       }
 
       display.drawFastHLine(0, 170, w, GxEPD_BLACK);
+      display.setFont(&FreeMono9pt7b);          // 细体, 防超宽换行
       display.setCursor(2, 188);
-      display.print("TOTAL = monthly pool");
+      display.print("TOTAL = monthly");
     }
   } while (display.nextPage());
 }
